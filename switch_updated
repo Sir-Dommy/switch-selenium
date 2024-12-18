@@ -1,0 +1,776 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[3]:
+
+
+import tkinter as tk
+from tkinter import messagebox, filedialog, ttk
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import Select
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from datetime import datetime
+import time
+import pandas as pd
+import csv
+import os
+
+# Set up Chrome options (optional)
+chrome_options = Options()
+# chrome_options.add_argument("--headless")  # Run Chrome in headless mode (no GUI)
+# chrome_options.add_argument("--no-sandbox")
+# chrome_options.add_argument("--disable-dev-shm-usage")
+
+# Set up the ChromeDriver service
+service = Service('/usr/bin/chromedriver')  # Path to ChromeDriver
+
+# Create a new instance of the Chrome driver
+driver = webdriver.Chrome(service=service, options=chrome_options)
+
+driver.maximize_window()
+
+# Sir-dommy security check
+given_date_str = "2025-01-12"
+
+given_date = datetime.strptime(given_date_str, "%Y-%m-%d").date()
+
+# Get the current date
+current_date = datetime.now().date()
+
+# Compare the dates
+if current_date > given_date:
+    print("Current date is greater than the given date.")
+    driver.quit()
+
+
+def setLoginDetails(username):
+    password = ""
+    if(username == "kmuli"):
+        print("We are muli")
+        password = "EjEucCeOc5op!"
+
+    elif(username == "rachelkavuu"):
+        print("We are at Rachel")
+        password = "revjeOg1drof$"
+
+    print("OUR USERNAME IS: " + username)
+
+    driver.find_element(By.ID, "username").send_keys(username)
+    driver.find_element(By.ID, "password").send_keys(password)
+    
+def openWebBrowser(url, username):
+    # Navigate to a webpage
+    try:
+        driver.get(url)
+        
+        try:
+            username_element = WebDriverWait(driver, 0).until(
+            EC.element_to_be_clickable((By.ID, "username")))
+                
+            
+            setLoginDetails(username)            
+            
+        except Exception as e:
+            link_to_login = WebDriverWait(driver, 0).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "strong")))
+            
+        
+            link_to_login.click()
+            setLoginDetails(username) 
+            
+        except Exception as e:
+            print(e)
+            pass
+        
+    except Exception as e:        
+        messagebox.showwarning("Use a valid URL or another Error", str(e))
+
+    print("WE HAVE REACHED THIS POINT")
+
+
+# In[2]:
+
+
+def createResultFile(action_type, system_file_path):
+    filename = os.path.dirname(system_file_path) + "/AdjustementResults.csv"
+    
+    with open(filename, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow([action_type])
+        writer.writerow(["Reference Number", "System Amount", "MPESA Amount", "Status", "Reason"])
+        
+    return filename
+    
+def appendResults(filename, reference_number, system_amount, mpesa_amount, status, reason):
+    
+    with open(filename, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow([reference_number, system_amount, mpesa_amount, status, reason])
+    
+
+
+# In[3]:
+
+
+def clicksInCollectionsInProgress(reference_number, amount, status, filename):
+    try:
+        search_and_update_element = WebDriverWait(driver, 0).until(
+            EC.element_to_be_clickable((By.LINK_TEXT, "Search&Update Collections"))
+        )
+        
+        search_and_update_element.click()
+        
+    except Exception as e:
+        driver.find_element(By.LINK_TEXT, "Collection").click()
+        
+        search_and_update_element = WebDriverWait(driver, 3).until(
+            EC.element_to_be_clickable((By.LINK_TEXT, "Search&Update Collections"))
+        )
+        
+        search_and_update_element.click()
+        
+    
+    uuid_element = driver.find_element(By.NAME, "uuid")
+    uuid_element.send_keys(reference_number)
+    search_button = driver.find_element(By.CSS_SELECTOR, ".btn-info")
+    search_button.click()
+    
+    time.sleep(1)
+    
+    # Find all elements with the class 'btn-danger'
+    failed_buttons = driver.find_elements(By.CSS_SELECTOR, ".btn-danger")
+    
+    success_buttons = driver.find_elements(By.CSS_SELECTOR, ".btn-success")
+    
+    if(len(failed_buttons) == 0 or len(success_buttons) == 0):
+        appendResults(filename, reference_number, amount, amount, "ERROR", "Unavailable Buttons Error.... Success Buttons : " + str(len(success_buttons)) + " Fail buttons " + str(len(failed_buttons)))
+        return
+    
+    elif(len(failed_buttons) > 1 or len(success_buttons) > 1):
+        appendResults(filename, reference_number, amount, amount, "ERROR", "Too Many Buttons Error.... Success Buttons : " + str(len(success_buttons)) + " Fail buttons " + str(len(failed_buttons)))
+        return 
+    
+    else:
+        if(status == "SUCCESS"):
+            driver.find_element(By.CSS_SELECTOR, ".btn-success").click()
+            
+            # Wait for the "Alert" element to be clickable
+            try:
+                alert_element = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, ".alert-success"))
+                )
+
+                #lets append to the result file
+                appendResults(filename, reference_number, amount, amount, status, "Adjusted Successfully " + alert_element.text)
+                
+
+            except Exception as e:
+                alert_element = WebDriverWait(driver, 0).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, ".alert-error"))
+                )
+                #reference_number, exchange_rate, originate_currency, amount, terminate_currency, current_status, update_status, filename
+                appendResults(filename, reference_number, amount, amount, "Adjusting Error", "System Error: " + alert_element.text)
+
+            
+        elif(status == "REJECTED_TRANSACTION"):
+            driver.find_element(By.CSS_SELECTOR, ".btn-danger").click()
+    
+            # Wait for the "Alert" element to be clickable
+            try:
+                alert_element = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, ".alert-success"))
+                )
+
+                #lets append to the result file
+                appendResults(filename, reference_number, amount, amount, status, "Adjusted Successfully " + alert_element.text)
+                
+
+            except Exception as e:
+                alert_element = WebDriverWait(driver, 0).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, ".alert-error"))
+                )
+                #reference_number, exchange_rate, originate_currency, amount, terminate_currency, current_status, update_status, filename
+                appendResults(filename, reference_number, amount, amount, "Adjusting Error", "System Error: " + alert_element.text)
+
+
+            except Exception as e:
+                appendResults(filename, reference_number, amount, amount, "Adjusting Error", "System Error: " + str(e))
+
+                messagebox.showwarning("HAPA NI KUNGORI!!!!!", e)
+                
+        else:
+            appendResults(filename, reference_number, amount, amount, "Adjusting Error", "INVALID UPDATE STATUS: " + status )
+    
+    
+
+
+# In[4]:
+
+
+def clicksInTransactions(reference_number, exchange_rate, originate_currency, amount, terminate_currency, current_status, update_status, filename):
+    #driver.find_element(By.CSS_SELECTOR, ".right_col").click()
+    
+    #driver.find_element(By.LINK_TEXT, "Transactions").click()
+    #time.sleep(2)
+    
+    try:
+        adjust_status_element = WebDriverWait(driver, 0).until(
+            EC.element_to_be_clickable((By.LINK_TEXT, "Adjust Status"))
+        )
+        
+        adjust_status_element.click()
+        #driver.find_element(By.LINK_TEXT, "Adjust Status").click()
+        
+    except Exception as e:
+        driver.find_element(By.LINK_TEXT, "Transactions").click()
+        
+        adjust_status_element = WebDriverWait(driver, 3).until(
+            EC.element_to_be_clickable((By.LINK_TEXT, "Adjust Status"))
+        )
+        adjust_status_element.click()
+        #driver.find_element(By.LINK_TEXT, "Adjust Status").click()
+        
+    except Exception as e:
+        adjust_status_element = WebDriverWait(driver, 0).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, ".alert-error"))
+        )
+        
+        adjust_status_element.click()
+        
+    except Exception as e:
+        driver.find_element(By.LINK_TEXT, "Transactions").click()
+        driver.find_element(By.LINK_TEXT, "Adjust Status").click()
+
+    
+    
+    reference_number_element = driver.find_element(By.ID, "referencenumber")
+    reference_number_element.send_keys(reference_number)
+    
+    #.send_keys("oooo")
+    exchange_rate_element = driver.find_element(By.ID, "exchangerate")
+    exchange_rate_element.send_keys(exchange_rate)
+    
+    originate_currency_element = Select(driver.find_element(By.NAME, "originatecurrency")) 
+    originate_currency_element.select_by_visible_text(originate_currency)
+    #originate_currency_element.find_element(By.XPATH, "//option[. = 'KES']").click()
+    
+    amount_element = driver.find_element(By.ID, "amount")
+    amount_element.send_keys(amount)
+    
+    recipient_currency_element = Select(driver.find_element(By.NAME, "recipientcurrency"))
+    recipient_currency_element.select_by_visible_text(terminate_currency)
+    #recipient_currency_element.find_element(By.XPATH, "//option[. = 'RWF']").click() 
+    
+    
+    current_transfer_status_element = Select(driver.find_element(By.NAME, "currenttransferstatus"))
+    current_transfer_status_element.select_by_visible_text(current_status)
+    #current_transfer_status_element.find_element(By.XPATH, "//option[. = 'CREDIT_IN_PROGRESS']").click()
+    
+    update_transaction_status_element = Select(driver.find_element(By.NAME, "updatetransactionstatus"))
+    update_transaction_status_element.select_by_visible_text(update_status)
+    #update_transaction_status_element.find_element(By.XPATH, "//option[. = 'CREDIT_IN_PROGRESS']").click()
+    
+    submit_button = driver.find_element(By.ID, "submit-button")
+    submit_button.click()
+    
+    # Wait for the "Alert" element to be clickable
+    try:
+        alert_element = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, ".alert-success"))
+        )
+        
+        #lets append to the result file
+        if(update_status == "SUCCESS"):
+            appendResults(filename, reference_number, amount, amount, update_status, "Adjusted Successfully " + alert_element.text)
+        else:
+            appendResults(filename, reference_number, amount, amount, update_status, "Adjusted Successfully " + alert_element.text)
+        
+        
+    except Exception as e:
+        alert_element = WebDriverWait(driver, 0).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, ".alert-error"))
+        )
+        #reference_number, exchange_rate, originate_currency, amount, terminate_currency, current_status, update_status, filename
+        appendResults(filename, reference_number, amount, amount, "Adjusting Error", "System Error: " + alert_element.text)
+
+        
+    except Exception as e:
+        appendResults(filename, reference_number, amount, amount, "Adjusting Error", "System Error: " + str(e))
+
+        messagebox.showwarning("HAPA NI KUNGORI!!!!!", e)
+
+
+# In[5]:
+
+
+def checkIfLoggedIn():    
+    page_text = driver.page_source
+
+    # Check if the word 'Home' is in the page source
+    if "Home" not in page_text:
+        return 0
+    
+    
+def adjustInProgressCollections(in_progress_collections_df, mpesa_df):
+    if(checkIfLoggedIn() == 0):
+        messagebox.showwarning("Login Error!!!", "Go to new browser page opened and login")
+        return
+    
+    messagebox.showwarning("Success", "Naona Ushalogin!!!! Click ok tuendelee")
+
+
+# In[6]:
+
+
+def verifyExcelFilesAndExecute(action_type, originate_currency, terminate_currency, exchange_rate, system_file_path, mpesa_file_path, filename):
+    
+    
+    # Load the MPESA Excel file
+    mpesa_df = pd.read_excel(mpesa_file_path, engine='xlrd')  
+    if(action_type == "Transaction"):
+        row_index_0 = 0
+        row_index_2 = 2
+        
+        short_code = mpesa_df.iloc[row_index_0, 1]
+        date_from = mpesa_df.iloc[row_index_2, 2]
+        date_to = mpesa_df.iloc[row_index_2, 4]
+        
+        if(short_code != "3033483" and short_code != "928900"):
+            messagebox.showwarning("Mpesa File Error!!!", "We expect a shortcode: 3033483 for Transactions provided is: " + short_code)
+            return;
+        
+    else:
+        row_index_0 = 0
+        row_index_2 = 2
+        
+        short_code = mpesa_df.iloc[row_index_0, 1]
+        date_from = mpesa_df.iloc[row_index_2, 2]
+        date_to = mpesa_df.iloc[row_index_2, 4]
+        
+        if(short_code != "4085973"):
+            messagebox.showwarning("Mpesa File Error!!!", "We expect a shortcode: 4085973 for Collections provided is: " + short_code)
+            return
+    
+    #verify system file for transactions
+    if(action_type == "Transaction"):
+        
+        # Load the system Excel file
+        transaction_df = pd.read_excel(system_file_path, engine='openpyxl')
+
+        #first row is treated a header row............ so row 0 is the second row in the excel sheet
+        
+        # Access data from row 0, column 1 and column 4 and column 9 (considering indexing starts from 0)
+        row_index = 0  # row 2 in 0-based indexing
+
+        row_0_col_1 = transaction_df.iloc[row_index, 1]
+        row_0_col_4 = transaction_df.iloc[row_index, 4]
+        row_0_col_9 = transaction_df.iloc[row_index, 9] 
+        
+        #row_1_col_1 : referenceNumber
+        #row_1_col_4 : OutgoingAmount(Payout Amount)
+        #row_1_col_9 : Status
+        
+        if(row_0_col_1 != "referenceNumber" or row_0_col_4 != "OutgoingAmount(Payout Amount)" or row_0_col_9 != "Status"):
+            messagebox.showwarning("System Transactions Excel File Error", "The system Transactions File you provided does not match required columns!!! ")
+            return;
+        
+        
+        #Check if user has already logged in...
+        if(checkIfLoggedIn() == 0):
+            messagebox.showwarning("Login Error!!!", "Go to new browser page opened and login")
+            return
+            
+    
+        row_count = 0
+        success_count = 0
+        fail_count = 0
+        amount_matches = 0
+        
+        #Loop through each row and print the specified columns' values
+        for index, row in transaction_df.iterrows():
+            # Access each column's value for the current row
+            if(index < 1):
+                continue
+                
+            row_count +=1                        
+            
+            reference_number = row[1]
+            amount = row[4]
+            status = row[9]
+            
+            if(status != "CREDIT_IN_PROGRESS"):
+                appendResults(filename, reference_number, amount, row_data.iloc[6], "WUEH", "The status is not CREDIT IN PROGRESS IT IS: " + status)
+                        
+                continue
+                
+            flag = 0
+            for mpesa_row in mpesa_df.iterrows():
+                index, row_data = mpesa_row  # Unpack the tuple
+                string_to_compare = row_data.iloc[3]  # Access the 5th element (0-based indexing)
+                
+                if not isinstance(string_to_compare, str):
+                    continue
+
+                        
+                if(reference_number in row_data.iloc[3]):
+                    
+                    flag = 1
+                    success_count +=1
+                    if(row_data.iloc[6] != (float(amount) * -1.00)):
+                        amount_matches +=1
+                        
+                        appendResults(filename, reference_number, amount, row_data.iloc[6], "Found_but", "Seems We have Amounts Misamatching... Not Adjusted")
+                        break
+                        
+                    #Adjust transaction then break
+                    try:
+                        #action_type, originate_currency, terminate_currency, exchange_rate, system_file_path, mpesa_file_path, filename):
+    
+                        clicksInTransactions(reference_number, exchange_rate, originate_currency, amount, terminate_currency, "CREDIT_IN_PROGRESS", "SUCCESS", filename)
+                        
+                    except Exception as e:
+                        
+                        appendResults(filename, reference_number, amount, row_data.iloc[6], "Found_but", "Error While clicking in browser " + str(e))
+                        
+                        #messagebox.showwarning("Hii Iko Fiti!!", "Transaction ID: "+ reference_number +"System Amount: " + amount + "MPESA amount: " + mpesa_row[5])
+                        
+            
+            if(flag == 0):
+                fail_count += 1
+                try:
+                    #action_type, originate_currency, terminate_currency, exchange_rate, system_file_path, mpesa_file_path, filename):
+
+                    clicksInTransactions(reference_number, exchange_rate, originate_currency, amount, terminate_currency, "CREDIT_IN_PROGRESS", "REJECTED_TRANSACTION", filename)
+
+                except Exception as e:
+
+                    appendResults(filename, reference_number, amount, row_data.iloc[6], "Not_Found_but", "Error While clicking in browser " + str(e))
+
+                   
+                #Adjust transaction to failed
+                #messagebox.showwarning("No result", "Transaction ID: "+ reference_number )
+                      
+            
+            #print(f"{index + 1}: Reference Number: {reference_number} Amount : {amount} Status: {status}")
+            
+        messagebox.showwarning("Results", "Row Count: "+ str(row_count) +" Success Count: " + str(success_count) + " Amount Misatches: " + str(amount_matches) + " Fail_count: "+ str(fail_count))
+        
+    
+    elif(action_type == "Collection Adjust Status"):
+        messagebox.showwarning("Not Yet Implemented!!!", "Itabidi Umefanya hizi mwenyewe!!! 😊😊😊 ")
+        return
+    
+    else:
+        # Load the system Excel file
+        in_progress_collections_df = pd.read_excel(system_file_path, engine='openpyxl')
+
+        #first row is treated a header row............ so row 0 is the second row in the excel sheet
+        
+        # Access data from row 0, column 1 and column 4 and column 9 (considering indexing starts from 0)
+        row_index = 0  # row 2 in 0-based indexing     ######debitcurrency
+
+        row_0_col_6 = in_progress_collections_df.iloc[row_index, 6]
+        row_0_col_8 = in_progress_collections_df.iloc[row_index, 8]
+        row_0_col_10 = in_progress_collections_df.iloc[row_index, 10]
+        row_0_col_12 = in_progress_collections_df.iloc[row_index, 12] 
+        
+        if(row_0_col_6 != "debitcurrency" or row_0_col_8 != "amount" or row_0_col_10 != "Status" or row_0_col_12 != "OriginateUuid"):
+            messagebox.showwarning("System Collections Excel File Error", "The system Collections File you provided does not match required columns!!! ")
+            return
+        
+        #Check if user has already logged in...
+        if(checkIfLoggedIn() == 0):
+            messagebox.showwarning("Login Error!!!", "Go to new browser page opened and login")
+            return
+            
+    
+        row_count = 0
+        success_count = 0
+        fail_count = 0
+        uganda_count = 0
+        kenya_count = 0
+        other_currency_count = 0
+        amount_matches = 0
+        
+        #Loop through each row and print the specified columns' values
+        for index, row in in_progress_collections_df.iterrows():
+            # Access each column's value for the current row
+            if(index < 1):
+                continue
+                
+            row_count +=1                        
+            
+            reference_number = row[12]
+            amount = row[8]
+            status = row[10]
+            currency_to_check = row[6]
+            
+            if(status != "CREDIT_IN_PROGRESS"):
+                appendResults(filename, reference_number, amount, row_data.iloc[5], "WUEH", "The status is not CREDIT IN PROGRESS IT IS: " + status)
+                        
+                continue
+                
+            if(currency_to_check == "UGX"):
+                uganda_count +=1
+                continue
+                
+            elif(currency_to_check == "KES"):
+                kenya_count +=1
+                
+            else:
+                other_currency_count +=1
+                continue 
+                
+            flag = 0
+            for mpesa_row in mpesa_df.iterrows():
+                index, row_data = mpesa_row  # Unpack the tuple
+                string_to_compare = row_data.iloc[3]  # Access the 5th element (0-based indexing)
+                
+                if not isinstance(string_to_compare, str):
+                    continue
+
+                        
+                if(reference_number in row_data.iloc[3]):
+                    
+                    flag = 1
+                    success_count +=1
+                    if(row_data.iloc[5] != (float(amount) * 1.00)):
+                        amount_matches +=1
+                        
+                        appendResults(filename, reference_number, amount, row_data.iloc[5], "Found_but", "Seems We have Amounts Misamatching... Not Adjusted")
+                        continue
+                        
+                    #Adjust transaction then break
+                    try:
+                        #action_type, originate_currency, terminate_currency, exchange_rate, system_file_path, mpesa_file_path, filename):
+    
+                        clicksInCollectionsInProgress(reference_number, amount, "SUCCESS", filename)
+        
+                    except Exception as e:
+                        
+                        appendResults(filename, reference_number, amount, row_data.iloc[5], "Found_but", "Error While clicking in browser " + str(e))
+                        
+                        #messagebox.showwarning("Hii Iko Fiti!!", "Transaction ID: "+ reference_number +"System Amount: " + amount + "MPESA amount: " + mpesa_row[5])
+                        
+            
+            if(flag == 0):
+                fail_count += 1
+                try:
+                    #action_type, originate_currency, terminate_currency, exchange_rate, system_file_path, mpesa_file_path, filename):
+
+                    clicksInCollectionsInProgress(reference_number, amount, "REJECTED_TRANSACTION", filename)
+                    
+                except Exception as e:
+
+                    appendResults(filename, reference_number, amount, row_data.iloc[5], "Not_Found_but", "Error While clicking in browser " + str(e))
+            
+                
+                
+                #Adjust transaction to failed
+                #messagebox.showwarning("No result", "Transaction ID: "+ reference_number )
+                      
+            
+            #print(f"{index + 1}: Reference Number: {reference_number} Amount : {amount} Status: {status}")
+            
+        messagebox.showwarning("Results", "Row Count: "+ str(row_count) +" Success Count: " + str(success_count) + " Amount Mismatches: " + str(amount_matches) + " Fail_count: "+ str(fail_count) + " KES: " + str(kenya_count) + " UGX: " + str(uganda_count) + " OTHER: " + str(other_currency_count))
+        
+    
+    
+        
+
+
+# In[7]:
+
+
+system_file_path = "";
+mpesa_file_path = "";
+
+
+
+def start(action_type, originate_currency, terminate_currency, exchange_rate, system_file_path, mpesa_file_path):
+        
+    if(system_file_path == mpesa_file_path or (system_file_path == "" or mpesa_file_path == "")): 
+        if(action_type == "Collection in Progres"):
+            if(mpesa_file_path == ""):
+                messagebox.showwarning("File Selection Error", "Mpesa file must be provided for In progress collections!!! ")
+                return
+        
+        else:          
+            messagebox.showwarning("File Selection Error", "No files selected or you have selected similar files!!!!" + system_file_path + " : " + mpesa_file_path)
+            return
+        
+    if(action_type == "" or originate_currency == "" or terminate_currency == "" or exchange_rate == ""):
+        messagebox.showwarning("Inputs Error", "Ensure all fields are set")
+        return
+        
+    alert_string ="Action Type       : " + action_type +  "\n" + "Originate Currency: " + originate_currency + "\n" + "Terminate Currency: " + terminate_currency + "\n" + "Exchange Rate     : " + exchange_rate + "\n" + "System file    : " + system_file_path + "\n" +  "Mpesa File        : " + mpesa_file_path + "\n" 
+    
+        
+    #SHOW ALL INPUTS FROM USER
+    messagebox.showinfo("Confirm Your Inputs", alert_string)
+    
+    #Lets create the result file path
+    result_file_path = createResultFile(action_type, system_file_path)
+    
+    #verify excel file
+    try:
+        verifyExcelFilesAndExecute(action_type, originate_currency, terminate_currency, exchange_rate, system_file_path, mpesa_file_path, result_file_path)
+    
+    except Exception as e:        
+        messagebox.showwarning("HII NI NGORI!!!!!", "Kuna Error Wapi Sir-Dommy: " + str(e) )
+
+    
+def UploadFile(text, element):
+    file_path = filedialog.askopenfilename(
+        title = text,
+        filetypes=[("Excel files", "*.xlsx *.xls"), ("CSV files", "*.csv"), ("All files", "*.*")]
+    )
+    
+    if not file_path:
+        messagebox.showwarning("File Selection Error", "No file was selected.")
+        return
+    else:
+        if(text == "System File"):
+            element.config(text = file_path)
+            system_file_path = file_path
+        
+        elif(text == "MPESA File"):
+            element.config(text = file_path)
+            mpesa_file_path = file_path
+            
+        else:
+            messagebox.showwarning("HII NI NGORI!!!", "Not Mpesa or System file parameter received")
+            return
+    
+
+
+# In[ ]:
+
+
+def generateWholeViewPage():
+    def emptyLableForSpace():
+        # Create and place the result label
+        empty_label = tk.Label(root, text="")
+        empty_label.pack()
+        
+        
+    # Create the main window
+    root = tk.Tk()
+    root.title("Sir Dommy")
+    root.geometry("900x800") 
+    
+    web_url_label = tk.Label(root, text="Select The web Url To Visist:")
+    web_url_label.pack()
+    web_url_entry = ttk.Combobox(root, values=["", "https://collections.sarafupayment.com/adminforex/logout.jsp", "https://transfers.sarafupayment.com/adminforex/"])
+    web_url_entry.set("")  # Set a default value
+    web_url_entry.pack()
+    
+    emptyLableForSpace()
+    
+    # Create and place the Action Type dropdown
+    logins_label = tk.Label(root, text="Select Logins:")
+    logins_label.pack()
+    logins_selector = ttk.Combobox(root, values=["", "kmuli", "rachelkavuu"])
+    logins_selector.set("")  # Set a default value
+    logins_selector.pack()
+    
+    emptyLableForSpace()
+    
+    # Create and place the Scrape button
+    open_site_button = tk.Button(root, text="Browse", command=lambda: openWebBrowser(web_url_entry.get(), logins_selector.get()))
+    open_site_button.pack()
+    
+    emptyLableForSpace()
+
+    # Create and place the Action Type dropdown
+    locator_label = tk.Label(root, text="Select Action Type:")
+    locator_label.pack()
+    action_type_selector = ttk.Combobox(root, values=["", "Transaction", "Collection in Progres", "Collection Adjust Status"])
+    action_type_selector.set("")  # Set a default value
+    action_type_selector.pack()
+    
+    emptyLableForSpace()
+    
+    # Create and place the Initial Currecy dropdown
+    locator_label = tk.Label(root, text="Select Originate Currency:")
+    locator_label.pack()
+    originate_currency_selector = ttk.Combobox(root, values=["", "KES", "NGN", "XOF", "UGX"])
+    originate_currency_selector.set("")  # Set a default value
+    originate_currency_selector.pack()
+    
+    emptyLableForSpace()
+    
+    
+    # Create and place the Terminate Currecy dropdown
+    locator_label = tk.Label(root, text="Select Terminate Currency:")
+    locator_label.pack()
+    terminate_currency_selector = ttk.Combobox(root, values=["", "KES", "NGN", "XOF", "UGX"])
+    terminate_currency_selector.set("")  # Set a default value
+    terminate_currency_selector.pack()
+    
+    emptyLableForSpace()
+    
+    
+    # Create and place the ExchangeRate label and entry
+    exchange_rate_label = tk.Label(root, text="Exchange Rate:")
+    exchange_rate_label.pack()
+    exchange_rate_entry = tk.Entry(root)
+    exchange_rate_entry.pack()
+    
+    emptyLableForSpace()
+    
+    # Create upload button to upload excel file from system side
+    upload_button = tk.Button(root, text="Upload System File", command=lambda: UploadFile("System File", selected_system_file))
+    upload_button.pack()
+    
+    # Create and place the result label
+    selected_system_file = tk.Label(root, text="")
+    selected_system_file.pack()
+    
+    emptyLableForSpace()
+
+
+    # Create upload button to upload excel file from MPESA side
+    upload_mpesa = tk.Button(root, text="Upload MPESA File", command=lambda: UploadFile("MPESA File", selected_mpesa_file))
+    upload_mpesa.pack()
+    
+    
+    # Create and place the result label
+    selected_mpesa_file = tk.Label(root, text="")
+    selected_mpesa_file.pack()
+    
+    emptyLableForSpace()
+    
+    # Create and place the result label
+    result_label = tk.Label(root, text="")
+    result_label.pack()
+
+    
+    # Create and place the Scrape button
+    submit_button = tk.Button(root, text="Submit", command=lambda: start(action_type_selector.get(), originate_currency_selector.get(),
+                                                                        terminate_currency_selector.get(), exchange_rate_entry.get(),
+                                                                        selected_system_file.cget("text"), selected_mpesa_file.cget("text")))
+    submit_button.pack()
+
+    
+    # Run the Tkinter event loop
+    root.mainloop()
+    
+generateWholeViewPage()
+            
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
